@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 )
 
 type ResizeEvent struct {
@@ -16,10 +17,11 @@ type ResizeEventHandler func(event ResizeEvent) (int, int, error)
 type ResizeEventListener struct {
 	Events  chan ResizeEvent
 	Handler ResizeEventHandler
+	wg      *sync.WaitGroup
 }
 
-func NewResizeEventListener(handler ResizeEventHandler) ResizeEventListener {
-	return ResizeEventListener{make(chan ResizeEvent), handler}
+func NewResizeEventListener(handler ResizeEventHandler, wg *sync.WaitGroup) ResizeEventListener {
+	return ResizeEventListener{make(chan ResizeEvent), handler, wg}
 }
 
 // Event Types
@@ -32,6 +34,7 @@ func (l *ResizeEventListener) Start(w *Window) {
 			}
 			w.width = new_width
 			w.Height = new_height
+			l.wg.Done()
 		}
 
 	}()
@@ -43,6 +46,7 @@ func (l *ResizeEventListener) Stop() {
 }
 
 func (l *ResizeEventListener) Send(event ResizeEvent) {
+	l.wg.Add(1)
 	l.Events <- event
 }
 
@@ -54,8 +58,8 @@ type Window struct {
 }
 
 // Now I'll Create the object that could be manipulated (the object who can execute the events) In our case the Window
-func CreateWindow(title string, width int, height int, handler ResizeEventHandler) Window {
-	return Window{listener: NewResizeEventListener(handler), title: title, width: width, Height: height}
+func CreateWindow(title string, width int, height int, handler ResizeEventHandler, wg *sync.WaitGroup) Window {
+	return Window{listener: NewResizeEventListener(handler, wg), title: title, width: width, Height: height}
 }
 
 func (w *Window) Open() {
@@ -73,13 +77,12 @@ func (w *Window) Resize(event ResizeEvent) {
 }
 
 func main() {
+	var wg sync.WaitGroup
 
 	window := CreateWindow("My Window", 800, 600, func(event ResizeEvent) (int, int, error) {
 		fmt.Printf("Window resized to %dx%d\n", event.Width, event.Height)
 		return event.Width, event.Height, nil
-	})
-
-	// var wg sync.WaitGroup
+	}, &wg)
 
 	window.Open()
 	window.Resize(ResizeEvent{1024, 768})
@@ -88,7 +91,9 @@ func main() {
 	window.Resize(ResizeEvent{200, 120})
 	window.Resize(ResizeEvent{900, 1144})
 	window.Resize(ResizeEvent{500, 100})
-	window.Resize(ResizeEvent{400, 876})
+	window.Resize(ResizeEvent{2140, 4116})
+
+	wg.Wait()
 	window.Close()
 
 	fmt.Printf("Height is %d\n", window.Height)
